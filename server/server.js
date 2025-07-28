@@ -47,6 +47,7 @@ app.use('/auth', require('./routes/auth'));
 app.use(validateCookie)
 app.use('/tasks', require('./routes/api/tasks'))
 app.use('/courses', require('./routes/api/courses'))
+app.use('/logout', require('./routes/logout'))
 
 //backend server on port 5000, client server (REACT) running on port 3000
 //only listen for requests if we dont connect to mongoose

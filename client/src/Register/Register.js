@@ -32,7 +32,6 @@ function Register() {
   return (
     <div className="page-container">
       <Navbar />
-
       <div className="content-wrapper">
         <div className="register-box">
           <h2>Let's Get Acquainted!</h2>

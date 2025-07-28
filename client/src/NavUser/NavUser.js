@@ -1,8 +1,17 @@
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import axios from '../api/axios'
 import "./NavUser.css";
 
 const NavUser = () => {
+  const cookie = useState();
   const navigate = useNavigate();
+
+  const handleSubmit = async (e) => {
+    try {
+      await axios.get("/logout", cookie)
+    } catch { console.log(e) }
+  }
 
   return (
     <div className="header-container">
@@ -39,6 +48,7 @@ const NavUser = () => {
         <div
           className="header-option-container"
           onClick={() => {
+            handleSubmit()
             navigate(`/`);
           }}
         >
