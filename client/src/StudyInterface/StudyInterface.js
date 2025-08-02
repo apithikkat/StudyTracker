@@ -35,21 +35,28 @@ const StudyTracker = () => {
   const [taskStartDate, setTaskStartDate] = useState("");
 
   useEffect(() => {
-    fetch("/courses")
-      .then((res) => res.json())
-      .then((data) => {
-        console.log("API response:", data);
-        const formatted = data.courses.map((course, index) => ({
-          id: course._id,
-          name: course.courseName,
-          color: course.folderColor,
-          tasks: [],
-        }));
-        setFolders(formatted);
-        console.log("Updated folders:", formatted);
-      })
-      .catch((err) => console.error("Error fetching courses:", err));
-  }, []);
+
+        axios.get("/courses")
+            .then(res => {
+                const formatted = res.data.map(course => ({
+                    id: course._id,
+                    name: course.courseName,
+                    color: course.folderColor, //|| newFolderColor,
+                    tasks: course.tasks.map(task => ({
+                        _id: task._id,
+                        text: task.taskname,
+                        completed: task.completed,
+                        startDate: task.startDate,
+                        deadline: task.deadline,
+                        priority: task.priority || "medium",
+                    })
+                    )
+                }))
+                setFolders(formatted);
+            })
+            .catch((err) => console.error("Error fetching courses:", err));
+    
+        }, []);
 
   const handleSubmitCourse = (e) => {
     e.preventDefault();
@@ -195,6 +202,100 @@ const StudyTracker = () => {
     setSortModes((prev) => ({ ...prev, [folderId]: nextMode }));
   };
 
+const addTask = () => {
+  if (!newTask.trim() || !selectedFolderId) return;
+
+  // Only handle “create” here; if editIndex != null you’ll PUT later.
+  if (editIndex !== null) return;
+
+  // EDIT MODE: send updates to the server
+  /*
+  if (editIndex !== null) {
+    const folder = folders.find(f => f.id === selectedFolderId);
+    const t      = folder.tasks[editIndex];
+    axios.put("/tasks", {
+      id:        t._id,
+      taskname:  newTask,
+      startDate: taskStartDate,
+      deadline:  taskDeadline
+    })
+    .then(res => {
+      const updated = res.data;
+      setFolders(prev =>
+        prev.map(f =>
+          f.id === selectedFolderId
+            ? {
+                ...f,
+                tasks: f.tasks.map((task,i) =>
+                  i === editIndex
+                    ? {
+                        ...task,
+                        text:      updated.taskname,
+                        startDate: updated.startDate,
+                        deadline:  updated.deadline
+                      }
+                    : task
+                )
+              }
+            : f
+        )
+      );
+      // cleanup 
+      setNewTask("");
+      setEditIndex(null);
+      setTaskStartDate("");
+      setTaskDeadline("");
+      setShowTaskForm(false);
+    })
+    .catch(err => console.error("Error updating task:", err));
+    return;
+  }*/
+
+  axios
+    .post("/tasks", {
+      taskname:  newTask,
+      course:    selectedFolderId,
+      startDate: taskStartDate,
+      deadline:  taskDeadline,
+      priority:  "medium"
+    })
+    .then(res => {
+      const t = res.data;  // the saved Task document
+
+      // Mirror the same state update, but using the real t._id and fields
+      setFolders(prev =>
+        prev.map(folder =>
+          folder.id === selectedFolderId
+            ? {
+                ...folder,
+                tasks: [
+                  ...folder.tasks,
+                  {
+                    _id:       t._id,
+                    text:      t.taskname,
+                    completed: t.completed,
+                    startDate: t.startDate,
+                    deadline:  t.deadline,
+                    priority:  t.priority
+                  }
+                ]
+              }
+            : folder
+        )
+      );
+
+      // Reset your form exactly as before
+      setNewTask("");
+      setEditIndex(null);
+      setTaskDeadline("");
+      setTaskStartDate("");
+      setShowTaskForm(false);
+    })
+    .catch(err => console.error("Error adding task:", err));
+};
+
+
+  /*
   const addTask = () => {
     if (!newTask.trim() || !selectedFolderId) return;
 
@@ -232,6 +333,8 @@ const StudyTracker = () => {
     setTaskStartDate("");
     setShowTaskForm(false);
   };
+*/
+
 
   const toggleComplete = (folderId, index) => {
     setFolders((prev) =>
@@ -259,6 +362,84 @@ const StudyTracker = () => {
     setShowTaskForm(true);
   };
 
+
+  const updateTask = () => {
+  if (editIndex === null) return;
+
+  // Grab the task we’re editing
+  const folder = folders.find(f => f.id === selectedFolderId);
+  const t      = folder.tasks[editIndex];
+
+  axios
+    .put("/tasks", {
+      id:        t._id,
+      taskname:  newTask,
+      startDate: taskStartDate,
+      deadline:  taskDeadline
+    })
+    .then(res => {
+      const updated = res.data;
+      // Update state with the server’s response
+      setFolders(prev =>
+        prev.map(f =>
+          f.id === selectedFolderId
+            ? {
+                ...f,
+                tasks: f.tasks.map((task,i) =>
+                  i === editIndex
+                    ? {
+                        ...task,
+                        text:      updated.taskname,
+                        startDate: updated.startDate,
+                        deadline:  updated.deadline
+                      }
+                    : task
+                )
+              }
+            : f
+        )
+      );
+      // Cleanup
+      setNewTask("");
+      setEditIndex(null);
+      setTaskStartDate("");
+      setTaskDeadline("");
+      setShowTaskForm(false);
+    })
+    .catch(err => console.error("Error updating task:", err));
+};
+
+
+
+const deleteTask = (folderId, index) => {
+  if (!window.confirm("Delete task permanently?")) return;
+  
+  // Find the task’s real _id from state
+  const folder = folders.find(f => f.id === folderId);
+  if (!folder) return;
+  const t = folder.tasks[index];
+
+  // Call DELETE /tasks with the task’s _id
+  axios
+    .delete("/tasks", { data: { id: t._id } })
+    .then(() => {
+      // Only update local state once the server confirms deletion
+      setFolders(prev =>
+        prev.map(f =>
+          f.id === folderId
+            ? { ...f, tasks: f.tasks.filter((_, i) => i !== index) }
+            : f
+        )
+      );
+    })
+    .catch(err => console.error("Error deleting task:", err));
+};
+
+
+
+
+
+/*
     const deleteTask = (folderId, index) => {
         setFolders(prev =>
             prev.map(folder =>
@@ -271,6 +452,7 @@ const StudyTracker = () => {
             )
         );
     };
+*/
 
     const editFolder = (folderId, currentName, currentColor) => {
         setEditFolderId(folderId);
@@ -382,7 +564,13 @@ const StudyTracker = () => {
                 onChange={(e) => setTaskDeadline(e.target.value)}
                 placeholder="Deadline"
               />
-              <button onClick={addTask}>Add</button>
+              <button //</div>onClick={addTask}>Add</button>
+                onClick={editIndex !== null ? updateTask : addTask}
+              >
+              {editIndex !== null ? "Save" : "Add"}
+                
+                </button>
+
             </div>
           )}
           {/*where to do course add */}
@@ -461,10 +649,10 @@ const StudyTracker = () => {
                                         }}
                                     >
                                         <span style={{ flex: 1 }}>{folder.name}</span>
-                                        {/* <div className="task-buttons">
-                                            <button onClick={() => editFolder(folder.id, folder.name, folder.color)}>✏️</button>
-                                            <button onClick={() => deleteFolder(folder.id, folder.name, folder.color)}>❌</button>
-                                        </div> */}
+                                        { /*<div className="task-buttons">
+                                            <button onClick={() => editFolder(folder.id, folder.name, folder.color)}>✏️O</button>
+                                            <button onClick={() => deleteFolder(folder.id, folder.name, folder.color)}>❌XX</button>
+                                        </div> */ }
                                     </div>
 
                                     {expandedFolderId === folder.id && (
@@ -555,8 +743,8 @@ const StudyTracker = () => {
                                                         onClick={() => handlePriorityCycle(folder.id, index)}>
                                                     </div>
                                                     <div className="task-buttons">
-                                                        <button onClick={() => editTask(folder.id, index)}>✏️</button>
-                                                        <button onClick={() => deleteTask(folder.id, index)}>❌</button>
+                                                        <button onClick={() => editTask(folder.id, index)}>✏️T?</button>
+                                                        <button onClick={() => deleteTask(folder.id, index)}>❌TASK?</button>
                                                     </div>
                                                 </li>
                                             ))}
