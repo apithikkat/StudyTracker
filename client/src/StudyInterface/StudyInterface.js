@@ -98,6 +98,8 @@ const StudyTracker = () => {
     return Math.min(100, Math.round((elapsedMs / totalMs) * 100));
   };
 
+
+ /*
   const getDaysLeft = (deadline) => {
     if (!deadline) return "";
 
@@ -118,6 +120,32 @@ const StudyTracker = () => {
     if (dayDiff === 1) return "Due tomorrow";
     return `${dayDiff} days left`;
   };
+*/
+  
+  
+
+const getDaysLeft = (deadline) => {
+  if (!deadline) return "";
+
+  // Parse the ISO string (or "YYYY-MM-DD") into a Date
+  const due = new Date(deadline);
+
+  // Normalize both to midnight to avoid hours/minutes confusion
+  const dueDate = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+  const today = new Date();
+  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+  // Compute difference in days
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const diffMs = dueDate.getTime() - todayDate.getTime();
+  const dayDiff = Math.ceil(diffMs / msPerDay);
+
+  if (dayDiff < 0) return "Overdue";
+  if (dayDiff === 0) return "Due today";
+  if (dayDiff === 1) return "Due tomorrow";
+  return `${dayDiff} days left`;
+};
+
 
   const priorities = {
     urgent: { color: "#e53935", label: "Urgent" },
@@ -126,6 +154,9 @@ const StudyTracker = () => {
     low: { color: "#43a047", label: "Low" },
   };
 
+
+
+  /*
   const handlePriorityCycle = (folderId, taskIndex) => {
     setFolders((prev) =>
       prev.map((folder) => {
@@ -145,6 +176,43 @@ const StudyTracker = () => {
       })
     );
   };
+  */
+
+  const handlePriorityCycle = (folderId, taskIndex) => {
+  // find the folder & task
+  const folder = folders.find(f => f.id === folderId);
+  if (!folder) return;
+  const t = folder.tasks[taskIndex];
+
+  // compute the next priority
+  const order = ["urgent", "high", "medium", "low"];
+  const next  = order[(order.indexOf(t.priority || "medium") + 1) % order.length];
+
+  // sendersist to server
+  axios
+    .put("/tasks", { id: t._id, priority: next })
+    .then(res => {
+      const updated = res.data;
+      // 4️⃣ update UI from the real response
+      setFolders(prev =>
+        prev.map(f =>
+          f.id === folderId
+            ? {
+                ...f,
+                tasks: f.tasks.map((task, i) =>
+                  i === taskIndex
+                    ? { ...task, priority: updated.priority }
+                    : task
+                )
+              }
+            : f
+        )
+      );
+    })
+    .catch(err => console.error("Error cycling priority:", err));
+};
+
+
 
   const toggleSortMode = () => {
     const folderId = selectedFolderId;
@@ -205,7 +273,7 @@ const StudyTracker = () => {
 const addTask = () => {
   if (!newTask.trim() || !selectedFolderId) return;
 
-  // Only handle “create” here; if editIndex != null you’ll PUT later.
+  // Only handle “create” here; 
   if (editIndex !== null) return;
 
   // EDIT MODE: send updates to the server
@@ -295,7 +363,7 @@ const addTask = () => {
 };
 
 
-  /*
+/*
   const addTask = () => {
     if (!newTask.trim() || !selectedFolderId) return;
 
@@ -335,7 +403,7 @@ const addTask = () => {
   };
 */
 
-
+/*
   const toggleComplete = (folderId, index) => {
     setFolders((prev) =>
       prev.map((folder) =>
@@ -351,16 +419,69 @@ const addTask = () => {
     );
   };
 
+*/
+
+
+
   const editTask = (folderId, index) => {
     const folder = folders.find((f) => f.id === folderId);
     if (!folder) return;
-    setNewTask(folder.tasks[index].text);
-    setTaskDeadline(folder.tasks[index].deadline || "");
-    setTaskStartDate(folder.tasks[index].startDate || "");
+    const { deadline, startDate, taskname } = folder.tasks[index];
+    setNewTask(taskname);
+    //setNewTask(folder.tasks[index].text);
+    setTaskDeadline(deadline
+        ? new Date(deadline).toISOString().slice(0,10)
+        : ""
+    );
+    //setTaskDeadline(folder.tasks[index].deadline || "");
+    setTaskStartDate(startDate
+        ? new Date(startDate).toISOString().slice(0,10)
+        : ""
+    );
+    //setTaskStartDate(folder.tasks[index].startDate || "");
     setEditIndex(index);
     setSelectedFolderId(folderId);
     setShowTaskForm(true);
   };
+  
+
+  const toggleComplete = (folderId, index) => {
+  //  Find the folder and task
+  const folder = folders.find(f => f.id === folderId);
+  if (!folder) return;
+  const t = folder.tasks[index];
+
+  //Confirm you want to mark as complete/incomplete
+  const msg = t.completed ? "Marking task as incomplete" : "Marking task as complete";
+  if (!window.confirm(msg)) return;
+
+  // Send the flipped flag to the server
+  axios
+    .put("/tasks", {
+      id:        t._id,
+      completed: !t.completed
+    })
+    .then(res => {
+      const updated = res.data;
+      //  Update UI from the server’s response
+      setFolders(prev =>
+        prev.map(f =>
+          f.id === folderId
+            ? {
+                ...f,
+                tasks: f.tasks.map((task, i) =>
+                  i === index
+                    ? { ...task, completed: updated.completed }
+                    : task
+                )
+              }
+            : f
+        )
+      );
+    })
+    .catch(err => console.error("Error toggling task:", err));
+};
+
 
 
   const updateTask = () => {
@@ -726,7 +847,7 @@ const deleteTask = (folderId, index) => {
                                                         onChange={() => toggleComplete(folder.id, index)}
                                                     />
                                                     <span>{task.text}</span>
-                                                    {task.deadline && task.startDate && (
+                                                    {task.deadline && /*task.startDate && */(
                                                         <div className="progress-wrapper">
                                                             <div className="progress-container">
                                                                 <div
