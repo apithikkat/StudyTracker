@@ -87,7 +87,6 @@ const getAllCourses = async (req, res) => {
 const updateCourse = async (req, res) => {
   const { id, courseName } = req.body;
   const token              = req.cookies.jwt;
-
   //  Validate inputs & auth (everything is not vital for our project)
   if (!id)         return res.status(400).json({ message: 'Course ID required.' });
   if (!courseName) return res.status(400).json({ message: 'New courseName required.' });
@@ -171,7 +170,7 @@ const deleteCourse = async (req, res) => {
     
     return res.json({ message: `Course "${course.courseName}" and its ${del.deletedCount} task(s) deleted.` });
   } catch (err) {
-    console.error('🔥 deleteCourse error:', err);
+    console.error('deleteCourse error:', err);
     return res.status(500).json({ message: 'Server error deleting course.' });
   }
 };

@@ -113,8 +113,6 @@ const handleUpdateCourse = folderId => {
 
 
 
-
-
   const calculateProgress = (startDate, deadline) => {
     const start = new Date(startDate);
     const end = new Date(deadline);
