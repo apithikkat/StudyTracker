@@ -78,17 +78,29 @@ const updateTask = async (req, res) => {
     return res.status(403).json({ message: 'Not allowed to update this task.' });
   }
 
-  if (taskname)                     task.taskname = taskname;
+  // Handle clearing or setting startDate
+  if (req.body.hasOwnProperty('startDate')) {
+    task.startDate = startDate
+      ? new Date(startDate)
+      : null;
+  }
+
+  // Handle clearing or setting deadline
+  if (req.body.hasOwnProperty('deadline')) {
+    task.deadline = deadline
+      ? new Date(deadline)
+      : null;
+  }
+
+  // Other fields
+  if (taskname)                       task.taskname = taskname;
   if (typeof completed === 'boolean') task.completed = completed;
-  if (startDate !== undefined) task.startDate = new Date(startDate);
-  if (deadline !== undefined)   task.deadline = deadline ? new Date(deadline) : null;
-  if (priority !== undefined)   task.priority = priority;
+  if (priority)                       task.priority  = priority;
 
-  
   const updated = await task.save();
-
   return res.json(updated);
 };
+
 
 
 // DELETE /tasks

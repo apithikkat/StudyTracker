@@ -32,6 +32,7 @@ const createNewCourse = async (req, res) => {
     }
 }
 
+/*
 const getAllCourses = async (req, res) => {
     if (!req.cookies.jwt) {
         return res.status(401).json({ message: 'No valid Token or Cookie found associated with this session' });
@@ -48,12 +49,44 @@ const getAllCourses = async (req, res) => {
         console.error(err);
     }
 }
+*/
+
+const getAllCourses = async (req, res) => {
+  if (!req.cookies.jwt) {
+    return res
+      .status(401)
+      .json({ message: 'No valid Token or Cookie found associated with this session' });
+  }
+  try {
+    const token = req.cookies.jwt;
+
+    // 1) Find the user and populate BOTH courses and their nested tasks
+    const foundUser = await User.findOne({ token })
+      .populate({
+        path: 'courses',
+        populate: { path: 'tasks' }
+      })
+      .exec();
+    if (!foundUser) return res.sendStatus(401);
+
+    // 2) Return exactly the array of courses
+    return res
+      .status(200)                // 200 OK for GET
+      .json(foundUser.courses);  // front end gets an array directly
+  } catch (err) {
+    console.error(err);
+    return res.sendStatus(500);
+  }
+}
+
+
+
+
 
 
 const updateCourse = async (req, res) => {
   const { id, courseName } = req.body;
   const token              = req.cookies.jwt;
-
   //  Validate inputs & auth (everything is not vital for our project)
   if (!id)         return res.status(400).json({ message: 'Course ID required.' });
   if (!courseName) return res.status(400).json({ message: 'New courseName required.' });
@@ -87,7 +120,7 @@ const updateCourse = async (req, res) => {
     return res.json(updated);
 
   } catch (err) {
-    console.error('🔥 updateCourse error:', err);
+    console.error(' updateCourse error:', err);
     return res.status(500).json({ message: 'Server error updating course.' });
   }
 };
@@ -137,7 +170,7 @@ const deleteCourse = async (req, res) => {
     
     return res.json({ message: `Course "${course.courseName}" and its ${del.deletedCount} task(s) deleted.` });
   } catch (err) {
-    console.error('🔥 deleteCourse error:', err);
+    console.error('deleteCourse error:', err);
     return res.status(500).json({ message: 'Server error deleting course.' });
   }
 };

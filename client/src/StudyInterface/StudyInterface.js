@@ -46,21 +46,28 @@ const StudyTracker = () => {
   const [earlyCompleteAnimTask, setEarlyCompleteAnimTask] = useState(null);
 
   useEffect(() => {
-    fetch("/courses")
-      .then((res) => res.json())
-      .then((data) => {
-        console.log("API response:", data);
-        const formatted = data.courses.map((course, index) => ({
-          id: course._id,
-          name: course.courseName,
-          color: course.folderColor,
-          tasks: [],
-        }));
-        setFolders(formatted);
-        console.log("Updated folders:", formatted);
-      })
-      .catch((err) => console.error("Error fetching courses:", err));
-  }, []);
+
+        axios.get("/courses")
+            .then(res => {
+                const formatted = res.data.map(course => ({
+                    id: course._id,
+                    name: course.courseName,
+                    color: course.folderColor, //|| newFolderColor,
+                    tasks: course.tasks.map(task => ({
+                        _id: task._id,
+                        text: task.taskname,
+                        completed: task.completed,
+                        startDate: task.startDate,
+                        deadline: task.deadline,
+                        priority: task.priority || "medium",
+                    })
+                    )
+                }))
+                setFolders(formatted);
+            })
+            .catch((err) => console.error("Error fetching courses:", err));
+    
+        }, []);
 
   useEffect(() => {
     const today = new Date().toISOString().split("T")[0]; // 'YYYY-MM-DD'
@@ -100,6 +107,35 @@ const StudyTracker = () => {
             .catch(e => console.log(e));
     };
 
+
+const handleUpdateCourse = folderId => {
+  // guard empty names
+  if (!editedFolderName.trim()) return;
+
+  axios
+    .put("/courses", {
+      id:         folderId,
+      courseName: editedFolderName.trim()
+    })
+    .then(res => {
+      const updated = res.data;
+      // update the folder name in state
+      setFolders(prev =>
+        prev.map(f =>
+          f.id === folderId
+            ? { ...f, name: updated.courseName }
+            : f
+        )
+      );
+      // exit edit mode
+      setEditFolderId(null);
+      setEditedFolderName("");
+    })
+    .catch(err => console.error("Error renaming course:", err));
+};
+
+
+
   const calculateProgress = (startDate, deadline) => {
     const start = new Date(startDate);
     const end = new Date(deadline);
@@ -112,28 +148,30 @@ const StudyTracker = () => {
     const elapsedMs = now - start;
 
     return Math.min(100, Math.round((elapsedMs / totalMs) * 100));
-  };
+  }; 
 
-  const getDaysLeft = (deadline) => {
-    if (!deadline) return "";
+const getDaysLeft = (deadline) => {
+  if (!deadline) return "";
 
-    const [year, month, day] = deadline.split("-").map(Number);
-    const dueDate = new Date(year, month - 1, day);
-    const today = new Date();
-    const todayDate = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate()
-    );
+  // Parse the ISO string (or "YYYY-MM-DD") into a Date
+  const due = new Date(deadline);
 
-    const timeDiff = dueDate.getTime() - todayDate.getTime();
-    const dayDiff = Math.round(timeDiff / (1000 * 60 * 60 * 24));
+  // Normalize both to midnight to avoid hours/minutes confusion
+  const dueDate = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+  const today = new Date();
+  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
-    if (dayDiff < 0) return "Overdue";
-    if (dayDiff === 0) return "Due today";
-    if (dayDiff === 1) return "Due tomorrow";
-    return `${dayDiff} days left`;
-  };
+  // Compute difference in days
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const diffMs = dueDate.getTime() - todayDate.getTime();
+  const dayDiff = Math.ceil(diffMs / msPerDay);
+
+  if (dayDiff < 0) return "Overdue";
+  if (dayDiff === 0) return "Due today";
+  if (dayDiff === 1) return "Due tomorrow";
+  return `${dayDiff} days left`;
+};
+
 
   const priorities = {
     urgent: { color: "#e53935", label: "Urgent" },
@@ -142,25 +180,41 @@ const StudyTracker = () => {
     low: { color: "#43a047", label: "Low" },
   };
 
+
   const handlePriorityCycle = (folderId, taskIndex) => {
-    setFolders((prev) =>
-      prev.map((folder) => {
-        if (folder.id !== folderId) return folder;
+  // find the folder & task
+  const folder = folders.find(f => f.id === folderId);
+  if (!folder) return;
+  const t = folder.tasks[taskIndex];
 
-        const updatedTasks = folder.tasks.map((task, index) => {
-          if (index !== taskIndex) return task;
+  // compute the next priority
+  const order = ["urgent", "high", "medium", "low"];
+  const next  = order[(order.indexOf(t.priority || "medium") + 1) % order.length];
 
-          const order = ["urgent", "high", "medium", "low"];
-          const currentIndex = order.indexOf(task.priority || "medium");
-          const nextPriority = order[(currentIndex + 1) % order.length];
+  // sendersist to server
+  axios
+    .put("/tasks", { id: t._id, priority: next })
+    .then(res => {
+      const updated = res.data;
+      // 4️⃣ update UI from the real response
+      setFolders(prev =>
+        prev.map(f =>
+          f.id === folderId
+            ? {
+                ...f,
+                tasks: f.tasks.map((task, i) =>
+                  i === taskIndex
+                    ? { ...task, priority: updated.priority }
+                    : task
+                )
+              }
+            : f
+        )
+      );
+    })
+    .catch(err => console.error("Error cycling priority:", err));
+};
 
-          return { ...task, priority: nextPriority };
-        });
-
-        return { ...folder, tasks: updatedTasks };
-      })
-    );
-  };
 
   const toggleSortMode = () => {
     const folderId = selectedFolderId;
@@ -218,44 +272,101 @@ const StudyTracker = () => {
     setSortModes((prev) => ({ ...prev, [folderId]: nextMode }));
   };
 
-  const addTask = () => {
-    if (!newTask.trim() || !selectedFolderId) return;
+const addTask = () => {
+  if (!newTask.trim() || !selectedFolderId) return;
 
-    setFolders(
-      folders.map((folder) => {
-        if (folder.id === selectedFolderId) {
-          const updatedTasks = [...folder.tasks];
+  // Only handle “create” here; 
+  if (editIndex !== null) return;
 
-          if (editIndex !== null) {
-            updatedTasks[editIndex] = {
-              ...updatedTasks[editIndex],
-              text: newTask,
-              deadline: taskDeadline,
-              startDate: taskStartDate || updatedTasks[editIndex].startDate,
-            };
-          } else {
-            updatedTasks.push({
-              text: newTask,
-              completed: false,
-              startDate: taskStartDate || new Date().toISOString(),
-              deadline: taskDeadline,
-              priority: "medium",
-            });
-          }
+  // EDIT MODE: send updates to the server
+  /*
+  if (editIndex !== null) {
+    const folder = folders.find(f => f.id === selectedFolderId);
+    const t      = folder.tasks[editIndex];
+    axios.put("/tasks", {
+      id:        t._id,
+      taskname:  newTask,
+      startDate: taskStartDate,
+      deadline:  taskDeadline
+    })
+    .then(res => {
+      const updated = res.data;
+      setFolders(prev =>
+        prev.map(f =>
+          f.id === selectedFolderId
+            ? {
+                ...f,
+                tasks: f.tasks.map((task,i) =>
+                  i === editIndex
+                    ? {
+                        ...task,
+                        text:      updated.taskname,
+                        startDate: updated.startDate,
+                        deadline:  updated.deadline
+                      }
+                    : task
+                )
+              }
+            : f
+        )
+      );
+      // cleanup 
+      setNewTask("");
+      setEditIndex(null);
+      setTaskStartDate("");
+      setTaskDeadline("");
+      setShowTaskForm(false);
+    })
+    .catch(err => console.error("Error updating task:", err));
+    return;
+  }*/
 
-          return { ...folder, tasks: updatedTasks };
-        }
-        return folder;
-      })
-    );
+  axios
+    .post("/tasks", {
+      taskname:  newTask,
+      course:    selectedFolderId,
+      startDate: taskStartDate,
+      deadline:  taskDeadline,
+      priority:  "medium"
+    })
+    .then(res => {
+      const t = res.data;  // the saved Task document
 
-    setNewTask("");
-    setEditIndex(null);
-    setTaskDeadline("");
-    setTaskStartDate("");
-    setShowTaskForm(false);
-  };
+      // Mirror the same state update, but using the real t._id and fields
+      setFolders(prev =>
+        prev.map(folder =>
+          folder.id === selectedFolderId
+            ? {
+                ...folder,
+                tasks: [
+                  ...folder.tasks,
+                  {
+                    _id:       t._id,
+                    text:      t.taskname,
+                    completed: t.completed,
+                    startDate: t.startDate,
+                    deadline:  t.deadline,
+                    priority:  t.priority
+                  }
+                ]
+              }
+            : folder
+        )
+      );
 
+      // Reset your form exactly as before
+      setNewTask("");
+      setEditIndex(null);
+      setTaskDeadline("");
+      setTaskStartDate("");
+      setShowTaskForm(false);
+    })
+    .catch(err => console.error("Error adding task:", err));
+};
+
+
+
+=======
   const toggleComplete = (folderId, index) => {
     setFolders((prev) =>
       prev.map((folder) => {
@@ -280,37 +391,151 @@ const StudyTracker = () => {
       })
     );
   };
-  
+ 
+
 
   const editTask = (folderId, index) => {
     const folder = folders.find((f) => f.id === folderId);
     if (!folder) return;
-    setNewTask(folder.tasks[index].text);
-    setTaskDeadline(folder.tasks[index].deadline || "");
-    setTaskStartDate(folder.tasks[index].startDate || "");
+    const { deadline, startDate, taskname } = folder.tasks[index];
+    setNewTask(taskname);
+    //setNewTask(folder.tasks[index].text);
+    setTaskDeadline(deadline
+        ? new Date(deadline).toISOString().slice(0,10)
+        : ""
+    );
+    //setTaskDeadline(folder.tasks[index].deadline || "");
+    setTaskStartDate(startDate
+        ? new Date(startDate).toISOString().slice(0,10)
+        : ""
+    );
+    //setTaskStartDate(folder.tasks[index].startDate || "");
     setEditIndex(index);
     setSelectedFolderId(folderId);
     setShowTaskForm(true);
   };
+  
 
-    const deleteTask = (folderId, index) => {
-        setFolders(prev =>
-            prev.map(folder =>
-                folder.id === folderId
+  const toggleComplete = (folderId, index) => {
+  //  Find the folder and task
+  const folder = folders.find(f => f.id === folderId);
+  if (!folder) return;
+  const t = folder.tasks[index];
+
+  //Confirm you want to mark as complete/incomplete
+  const msg = t.completed ? "Marking task as incomplete" : "Marking task as complete";
+  if (!window.confirm(msg)) return;
+
+  // Send the flipped flag to the server
+  axios
+    .put("/tasks", {
+      id:        t._id,
+      completed: !t.completed
+    })
+    .then(res => {
+      const updated = res.data;
+      //  Update UI from the server’s response
+      setFolders(prev =>
+        prev.map(f =>
+          f.id === folderId
+            ? {
+                ...f,
+                tasks: f.tasks.map((task, i) =>
+                  i === index
+                    ? { ...task, completed: updated.completed }
+                    : task
+                )
+              }
+            : f
+        )
+      );
+    })
+    .catch(err => console.error("Error toggling task:", err));
+};
+
+
+
+  const updateTask = () => {
+  if (editIndex === null) return;
+
+  // Grab the task we’re editing
+  const folder = folders.find(f => f.id === selectedFolderId);
+  const t      = folder.tasks[editIndex];
+
+  axios
+    .put("/tasks", {
+      id:        t._id,
+      taskname:  newTask,
+      startDate: taskStartDate,
+      deadline:  taskDeadline
+    })
+    .then(res => {
+      const updated = res.data;
+      // Update state with the server’s response
+      setFolders(prev =>
+        prev.map(f =>
+          f.id === selectedFolderId
+            ? {
+                ...f,
+                tasks: f.tasks.map((task,i) =>
+                  i === editIndex
                     ? {
-                        ...folder,
-                        tasks: folder.tasks.filter((_, i) => i !== index),
-                    }
-                    : folder
-            )
-        );
-    };
+                        ...task,
+                        text:      updated.taskname,
+                        startDate: updated.startDate,
+                        deadline:  updated.deadline
+                      }
+                    : task
+                )
+              }
+            : f
+        )
+      );
+      // Cleanup
+      setNewTask("");
+      setEditIndex(null);
+      setTaskStartDate("");
+      setTaskDeadline("");
+      setShowTaskForm(false);
+    })
+    .catch(err => console.error("Error updating task:", err));
+};
 
-    const editFolder = (folderId, currentName, currentColor) => {
+
+
+const deleteTask = (folderId, index) => {
+  if (!window.confirm("Delete task permanently?")) return;
+  
+  // Find the task’s real _id from state
+  const folder = folders.find(f => f.id === folderId);
+  if (!folder) return;
+  const t = folder.tasks[index];
+
+  // Call DELETE /tasks with the task’s _id
+  axios
+    .delete("/tasks", { data: { id: t._id } })
+    .then(() => {
+      // Only update local state once the server confirms deletion
+      setFolders(prev =>
+        prev.map(f =>
+          f.id === folderId
+            ? { ...f, tasks: f.tasks.filter((_, i) => i !== index) }
+            : f
+        )
+      );
+    })
+    .catch(err => console.error("Error deleting task:", err));
+};
+
+
+
+
+ const editFolder = (folderId, currentName, currentColor) => {
         setEditFolderId(folderId);
         setEditedFolderName(currentName);
         setNewFolderColor(currentColor);
     };
+
 
     const deleteFolder = (folderId) => {
         setFolders(prev => prev.filter(folder => folder.id !== folderId));
@@ -416,7 +641,13 @@ const StudyTracker = () => {
                 onChange={(e) => setTaskDeadline(e.target.value)}
                 placeholder="Deadline"
               />
-              <button onClick={addTask}>Add</button>
+              <button //</div>onClick={addTask}>Add</button>
+                onClick={editIndex !== null ? updateTask : addTask}
+              >
+              {editIndex !== null ? "Save" : "Add"}
+                
+                </button>
+
             </div>
           )}
           {/*where to do course add */}
@@ -446,7 +677,144 @@ const StudyTracker = () => {
           )}
 
           <ul className="folder-list">
-            {folders.length > 0 ? (
+            {folders && folders.length > 0 ? (
+              folders.map((folder, folderIndex) => (
+              <li
+  key={folder.id}
+  className="folder-item"
+  draggable
+  onDragStart={() => setDraggedFolderIndex(folderIndex)}
+  onDragOver={e => e.preventDefault()}
+  onDrop={e => {
+    e.preventDefault();
+    if (draggedFolderIndex === null || draggedFolderIndex === folderIndex) return;
+    // … your existing folder‐reorder logic here …
+    setFolders(updated);
+    setDraggedFolderIndex(null);
+  }}
+  onDragEnd={() => setDraggedFolderIndex(null)}
+>
+  {/* ─────────── Folder Header ─────────── */}
+  <div
+    className="folder-header"
+    style={{
+      backgroundColor:
+        folder.id === expandedFolderId ? "#e3f2fd" : "#f5f5f5",
+      borderLeft: `10px solid ${folder.color}`,
+      display: "flex",
+      flexDirection: "column",
+      padding: "8px",
+      cursor: editFolderId === folder.id ? "default" : "pointer"
+    }}
+    onClick={() => {
+      if (editFolderId !== folder.id) {
+        setExpandedFolderId(prev =>
+          prev === folder.id ? null : folder.id
+        );
+        setSelectedFolderId(folder.id);
+      }
+    }}
+  >
+    {/* Top Row: name or edit form + edit button */}
+    <div style={{ display: "flex", alignItems: "center" }}>
+      {editFolderId === folder.id ? (
+        <>
+          <input
+            type="text"
+            value={editedFolderName}
+            onChange={e => setEditedFolderName(e.target.value)}
+            onKeyDown={e =>
+              e.key === "Enter" && handleUpdateCourse(folder.id)
+            }
+            style={{ flex: 1, marginRight: "8px" }}
+            autoFocus
+          />
+          <button onClick={() => handleUpdateCourse(folder.id)}>
+            Save
+          </button>
+          <button onClick={() => setEditFolderId(null)}>
+            Cancel
+          </button>
+        </>
+      ) : (
+        <>
+          <span style={{ flex: 1 }}>{folder.name}</span>
+          <button
+            onClick={e => {
+              e.stopPropagation();
+              editFolder(folder.id, folder.name);
+            }}
+            style={{
+              background: "none",
+              border: "none",
+              padding: "2px",
+              fontSize: "0.9rem",
+              opacity: 0.6,
+              cursor: "pointer",
+            }}
+            title="Edit course"
+          >
+            ✏️
+          </button>
+        </>
+      )}
+    </div>
+
+    {/* Bottom Row: completion summary + bar */}
+    {!editFolderId && (
+      <>
+        <div
+          style={{
+            fontSize: "12px",
+            color: "#666",
+            marginTop: "6px"
+          }}
+        >
+          {completedTasks} of {totalTasks} complete
+        </div>
+        {totalTasks > 0 && (
+          <div
+            className="folder-progress-container"
+            style={{
+              marginTop: "6px",
+              background: "#ddd",
+              height: "6px",
+              borderRadius: "4px",
+              width: "100%"
+            }}
+          >
+            <div
+              className="folder-progress-bar"
+              style={{
+                width: `${completionPercent}%`,
+                height: "100%",
+                backgroundColor: "#4caf50",
+                borderRadius: "4px"
+              }}
+            />
+          </div>
+        )}
+      </>
+    )}
+  </div>
+
+  {/* ─────────── Task List ─────────── */}
+  {expandedFolderId === folder.id && (
+    <ul className="todo-list">
+      {folder.tasks.map((task, index) => (
+        /* …your existing task <li> code here… */
+      ))}
+    </ul>
+  )}
+</li>
+
+   
+                            ))
+                        ) : (
+                            <p className="loading-text">Loading...</p>
+                        )}
+                    </ul>
+=======
               folders.map((folder, folderIndex) => {
                 const totalTasks = folder.tasks.length;
                 const completedTasks = folder.tasks.filter(task => task.completed).length;
@@ -613,6 +981,7 @@ const StudyTracker = () => {
               <p className="loading-text">Loading...</p>
             )}
     </ul>
+
                 </div>
 
         <div className="middle-column">
