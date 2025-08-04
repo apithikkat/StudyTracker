@@ -845,7 +845,9 @@ const updateTask = () => {
                 </div>
 
         <div className="middle-column">
-          <img src="your-image-url.jpg" alt="Background" className="faded-image" />
+          <div className="image-container">
+                        <img src="main_pomodoro.png" alt="Background" className="faded-image" />
+                    </div>
           <div className="achievements-bar" onClick={toggleAchievements}>
             Achievement Tracker
           </div>
