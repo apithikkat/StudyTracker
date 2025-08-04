@@ -84,6 +84,37 @@ const StudyTracker = () => {
             .catch(e => console.log(e));
     };
 
+
+const handleUpdateCourse = folderId => {
+  // guard empty names
+  if (!editedFolderName.trim()) return;
+
+  axios
+    .put("/courses", {
+      id:         folderId,
+      courseName: editedFolderName.trim()
+    })
+    .then(res => {
+      const updated = res.data;
+      // update the folder name in state
+      setFolders(prev =>
+        prev.map(f =>
+          f.id === folderId
+            ? { ...f, name: updated.courseName }
+            : f
+        )
+      );
+      // exit edit mode
+      setEditFolderId(null);
+      setEditedFolderName("");
+    })
+    .catch(err => console.error("Error renaming course:", err));
+};
+
+
+
+
+
   const calculateProgress = (startDate, deadline) => {
     const start = new Date(startDate);
     const end = new Date(deadline);
@@ -96,33 +127,7 @@ const StudyTracker = () => {
     const elapsedMs = now - start;
 
     return Math.min(100, Math.round((elapsedMs / totalMs) * 100));
-  };
-
-
- /*
-  const getDaysLeft = (deadline) => {
-    if (!deadline) return "";
-
-    const [year, month, day] = deadline.split("-").map(Number);
-    const dueDate = new Date(year, month - 1, day);
-    const today = new Date();
-    const todayDate = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate()
-    );
-
-    const timeDiff = dueDate.getTime() - todayDate.getTime();
-    const dayDiff = Math.round(timeDiff / (1000 * 60 * 60 * 24));
-
-    if (dayDiff < 0) return "Overdue";
-    if (dayDiff === 0) return "Due today";
-    if (dayDiff === 1) return "Due tomorrow";
-    return `${dayDiff} days left`;
-  };
-*/
-  
-  
+  }; 
 
 const getDaysLeft = (deadline) => {
   if (!deadline) return "";
@@ -154,29 +159,6 @@ const getDaysLeft = (deadline) => {
     low: { color: "#43a047", label: "Low" },
   };
 
-
-
-  /*
-  const handlePriorityCycle = (folderId, taskIndex) => {
-    setFolders((prev) =>
-      prev.map((folder) => {
-        if (folder.id !== folderId) return folder;
-
-        const updatedTasks = folder.tasks.map((task, index) => {
-          if (index !== taskIndex) return task;
-
-          const order = ["urgent", "high", "medium", "low"];
-          const currentIndex = order.indexOf(task.priority || "medium");
-          const nextPriority = order[(currentIndex + 1) % order.length];
-
-          return { ...task, priority: nextPriority };
-        });
-
-        return { ...folder, tasks: updatedTasks };
-      })
-    );
-  };
-  */
 
   const handlePriorityCycle = (folderId, taskIndex) => {
   // find the folder & task
@@ -211,7 +193,6 @@ const getDaysLeft = (deadline) => {
     })
     .catch(err => console.error("Error cycling priority:", err));
 };
-
 
 
   const toggleSortMode = () => {
@@ -363,65 +344,6 @@ const addTask = () => {
 };
 
 
-/*
-  const addTask = () => {
-    if (!newTask.trim() || !selectedFolderId) return;
-
-    setFolders(
-      folders.map((folder) => {
-        if (folder.id === selectedFolderId) {
-          const updatedTasks = [...folder.tasks];
-
-          if (editIndex !== null) {
-            updatedTasks[editIndex] = {
-              ...updatedTasks[editIndex],
-              text: newTask,
-              deadline: taskDeadline,
-              startDate: taskStartDate || updatedTasks[editIndex].startDate,
-            };
-          } else {
-            updatedTasks.push({
-              text: newTask,
-              completed: false,
-              startDate: taskStartDate || new Date().toISOString(),
-              deadline: taskDeadline,
-              priority: "medium",
-            });
-          }
-
-          return { ...folder, tasks: updatedTasks };
-        }
-        return folder;
-      })
-    );
-
-    setNewTask("");
-    setEditIndex(null);
-    setTaskDeadline("");
-    setTaskStartDate("");
-    setShowTaskForm(false);
-  };
-*/
-
-/*
-  const toggleComplete = (folderId, index) => {
-    setFolders((prev) =>
-      prev.map((folder) =>
-        folder.id === folderId
-          ? {
-              ...folder,
-              tasks: folder.tasks.map((task, i) =>
-                i === index ? { ...task, completed: !task.completed } : task
-              ),
-            }
-          : folder
-      )
-    );
-  };
-
-*/
-
-
 
   const editTask = (folderId, index) => {
     const folder = folders.find((f) => f.id === folderId);
@@ -559,27 +481,12 @@ const deleteTask = (folderId, index) => {
 
 
 
-
-/*
-    const deleteTask = (folderId, index) => {
-        setFolders(prev =>
-            prev.map(folder =>
-                folder.id === folderId
-                    ? {
-                        ...folder,
-                        tasks: folder.tasks.filter((_, i) => i !== index),
-                    }
-                    : folder
-            )
-        );
-    };
-*/
-
-    const editFolder = (folderId, currentName, currentColor) => {
+ const editFolder = (folderId, currentName, currentColor) => {
         setEditFolderId(folderId);
         setEditedFolderName(currentName);
         setNewFolderColor(currentColor);
     };
+
 
     const deleteFolder = (folderId) => {
         setFolders(prev => prev.filter(folder => folder.id !== folderId));
@@ -756,25 +663,57 @@ const deleteTask = (folderId, index) => {
                                     onDragEnd={() => setDraggedFolderIndex(null)}
                                 >
                                     <div
-                                        className="folder-header"
-                                        onClick={() => {
-                                            setExpandedFolderId(prev => prev === folder.id ? null : folder.id);
-                                            setSelectedFolderId(folder.id);
-                                        }}
-                                        style={{
-                                            backgroundColor: folder.id === expandedFolderId ? "#e3f2fd" : "#f5f5f5",
-                                            borderLeft: `10px solid ${folder.color}`,
-                                            display: "flex",
-                                            justifyContent: "space-between",
-                                            alignItems: "center",
-                                        }}
-                                    >
-                                        <span style={{ flex: 1 }}>{folder.name}</span>
-                                        { /*<div className="task-buttons">
-                                            <button onClick={() => editFolder(folder.id, folder.name, folder.color)}>✏️O</button>
-                                            <button onClick={() => deleteFolder(folder.id, folder.name, folder.color)}>❌XX</button>
-                                        </div> */ }
-                                    </div>
+  className="folder-header"
+  style={{
+    backgroundColor:
+      folder.id === expandedFolderId ? "#e3f2fd" : "#f5f5f5",
+    borderLeft: `10px solid ${folder.color}`,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  }}
+  onClick={() => {
+    if (editFolderId !== folder.id) {
+      setExpandedFolderId(prev =>
+        prev === folder.id ? null : folder.id
+      );
+      setSelectedFolderId(folder.id);
+    }
+  }}
+>
+  {editFolderId === folder.id ? (
+    <>
+      <input
+        type="text"
+        value={editedFolderName}
+        onChange={e => setEditedFolderName(e.target.value)}
+        onKeyDown={e =>
+          e.key === "Enter" && handleUpdateCourse(folder.id)
+        }
+        style={{ flex: 1, marginRight: "8px" }}
+      />
+      <button onClick={() => handleUpdateCourse(folder.id)}>
+        Save
+      </button>
+      <button onClick={() => setEditFolderId(null)}>
+        Cancel
+      </button>
+    </>
+  ) : (
+    <>
+      <span style={{ flex: 1 }}>{folder.name}</span>
+      <button
+        onClick={e => {
+          e.stopPropagation();
+          editFolder(folder.id, folder.name);
+        }}
+      >
+        ✏️
+      </button>
+    </>
+  )}
+</div>
+
 
                                     {expandedFolderId === folder.id && (
                                         <ul className="todo-list">
@@ -864,8 +803,8 @@ const deleteTask = (folderId, index) => {
                                                         onClick={() => handlePriorityCycle(folder.id, index)}>
                                                     </div>
                                                     <div className="task-buttons">
-                                                        <button onClick={() => editTask(folder.id, index)}>✏️T?</button>
-                                                        <button onClick={() => deleteTask(folder.id, index)}>❌TASK?</button>
+                                                        <button onClick={() => editTask(folder.id, index)}>✏️</button>
+                                                        <button onClick={() => deleteTask(folder.id, index)}>❌</button>
                                                     </div>
                                                 </li>
                                             ))}

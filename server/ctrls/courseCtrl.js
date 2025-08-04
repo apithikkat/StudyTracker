@@ -121,7 +121,7 @@ const updateCourse = async (req, res) => {
     return res.json(updated);
 
   } catch (err) {
-    console.error('🔥 updateCourse error:', err);
+    console.error(' updateCourse error:', err);
     return res.status(500).json({ message: 'Server error updating course.' });
   }
 };
